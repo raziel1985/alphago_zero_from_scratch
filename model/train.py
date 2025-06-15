@@ -319,6 +319,18 @@ class AlphaGoZeroTrainer:
             
         return (wins + draws) / self.eval_games
 
+    def load_checkpoint(self, model_file_name: str = 'latest_model.pt'):
+        checkpoint_path = os.path.join(self.checkpoint_dir, model_file_name)
+        if os.path.exists(checkpoint_path):
+            try:
+                checkpoint = torch.load(checkpoint_path, map_location=self.device)
+                self.model.load_state_dict(checkpoint['model_state_dict'])
+                print(f"加载预训练模型: {checkpoint_path}")
+            except Exception as e:
+                print(f"加载模型失败: {e}, 重新开始训练模型")
+        else:
+            print("未找到预训练模型，重新开始训练模型")
+
     def save_checkpoint(self, epoch: int, metrics: Dict):
         """
         保存模型和训练历史.
@@ -343,7 +355,7 @@ class AlphaGoZeroTrainer:
         with open(history_path, 'w') as f:
             json.dump(self.training_history, f)
 
-    def train(self):
+    def train(self, continues_train: bool = False):
         """
         训练模型.
         """
@@ -356,6 +368,10 @@ class AlphaGoZeroTrainer:
         print(f"Model channels: {self.model.conv_input[0].out_channels}")
         print(f"Number of residual blocks: {len(self.model.res_blocks)}")
         print("=" * 50)
+
+        # 加载预训练模型
+        if continues_train:
+            self.load_checkpoint()
 
         total_start_time = time.time()
         try:
@@ -427,8 +443,7 @@ def main():
         learning_rate=0.001,
         weight_decay=1e-4
     )
-    # TODO(rogerluo): 支持增量训练
-    trainer.train()
+    trainer.train(continues_train=True)
 
 
 if __name__ == "__main__":
