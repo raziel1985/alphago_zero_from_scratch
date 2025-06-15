@@ -57,9 +57,15 @@ pip install -r requirements.txt
 ### 训练 AI 模型
 
 ```bash
-# 从项目根目录运行训练
+# 从项目根目录运行训练（新训练）
 python3 -m model.train
 ```
+
+**增量训练支持**：
+- 训练器支持从已有检查点继续训练
+- 自动检测 `model/checkpoints/latest_model.pt` 文件
+- 如果存在检查点，会自动恢复训练进度
+- 支持中断后继续训练，无需重新开始
 
 ### 运行网页对弈
 

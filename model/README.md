@@ -103,9 +103,34 @@ trainer = AlphaGoZeroTrainer(
     checkpoint_dir='./checkpoints'
 )
 
-# 开始训练
-trainer.train()
+# 开始训练（从头开始）
+trainer.train(continues_train=False)
 ```
+
+### 1.1 增量训练（继续训练）
+
+支持从已有的检查点继续训练，无需从头开始：
+
+```python
+from model import AlphaGoZeroTrainer
+
+# 创建训练器
+trainer = AlphaGoZeroTrainer(
+    board_size=9,
+    num_epochs=100,
+    games_per_epoch=20,
+    checkpoint_dir='./checkpoints'
+)
+
+# 继续训练（自动加载最新检查点）
+trainer.train(continues_train=True)
+```
+
+**增量训练特性**：
+- 自动检测并加载 `checkpoints/latest_model.pt` 文件
+- 恢复模型权重、优化器状态和训练历史
+- 如果检查点文件不存在或损坏，会自动从头开始训练
+- 保持训练连续性，避免重复训练时间
 
 ### 2. 加载预训练模型
 
@@ -172,9 +197,23 @@ best_action = max(action_probs, key=action_probs.get)
 
 训练过程中会自动保存检查点到 `checkpoints/` 目录：
 
-- `checkpoint_X_YYYYMMDD_HHMMSS.pt`: 训练检查点
-- `latest_model.pt`: 最新模型权重
+- `checkpoint_X_YYYYMMDD_HHMMSS.pt`: 训练检查点（包含轮次信息）
+- `latest_model.pt`: 最新模型权重（用于增量训练和推理）
 - `training_history.json`: 训练历史和统计信息
+
+### 增量训练机制
+
+训练器支持智能的增量训练：
+
+1. **自动检测**: 启动时自动检查 `latest_model.pt` 是否存在
+2. **状态恢复**: 恢复模型权重、优化器状态和训练历史
+3. **容错处理**: 如果检查点损坏，自动回退到从头训练
+4. **无缝继续**: 保持训练的连续性和一致性
+
+```bash
+# 使用增量训练（推荐）
+python3 -m model.train  # 自动检测并继续训练
+```
 
 ## 性能优化
 
