@@ -1,0 +1,623 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>围棋对弈 - AlphaGo Zero</title>
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        .container {
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            padding: 30px;
+            max-width: 800px;
+            width: 100%;
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        
+        .header h1 {
+            color: #333;
+            margin: 0;
+            font-size: 2.5em;
+            font-weight: 300;
+        }
+        
+        .header p {
+            color: #666;
+            margin: 10px 0 0 0;
+            font-size: 1.1em;
+        }
+        
+        .game-area {
+            display: flex;
+            gap: 30px;
+            align-items: flex-start;
+        }
+        
+        .board {
+            display: grid;
+            grid-template-columns: repeat(9, 40px);
+            grid-template-rows: repeat(9, 40px);
+            gap: 0;
+            background: #deb887;
+            border: 3px solid #8b7355;
+            border-radius: 8px;
+            padding: 10px;
+            box-shadow: 0 10px 20px rgba(0,0,0,0.1);
+        }
+        
+        .cell {
+            width: 40px;
+            height: 40px;
+            border: 1px solid #8b7355;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            position: relative;
+            background: #deb887;
+            transition: background-color 0.2s;
+        }
+        
+        .cell:hover {
+            background: #d4af8c;
+        }
+        
+        .cell.disabled {
+            cursor: not-allowed;
+        }
+        
+        .stone {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            border: 2px solid #333;
+            box-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+            pointer-events: none;
+        }
+        
+        .stone.black {
+            background: radial-gradient(circle at 30% 30%, #666, #000);
+        }
+        
+        .stone.white {
+            background: radial-gradient(circle at 30% 30%, #fff, #ddd);
+            border-color: #999;
+        }
+        
+        /* 高亮最新落子 */
+        .stone.latest {
+            animation: highlight 2s ease-in-out;
+            border: 3px solid #ff4444;
+        }
+        
+        @keyframes highlight {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(255, 68, 68, 0.8); }
+            50% { box-shadow: 0 0 0 10px rgba(255, 68, 68, 0.4); }
+        }
+        
+        .info-panel {
+            width: 250px;
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        }
+        
+        .game-status {
+            margin-bottom: 20px;
+        }
+        
+        .status-item {
+            margin-bottom: 10px;
+            padding: 10px;
+            background: white;
+            border-radius: 5px;
+            border-left: 4px solid #667eea;
+        }
+        
+        .status-label {
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 5px;
+        }
+        
+        .status-value {
+            color: #666;
+        }
+        
+        .controls {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            position: relative;
+        }
+        
+        .btn {
+            padding: 12px 20px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 500;
+            transition: all 0.3s;
+            text-align: center;
+        }
+        
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            background: #5a6fd8;
+            transform: translateY(-2px);
+        }
+        
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+        }
+        
+        .btn-secondary:hover {
+            background: #5a6268;
+            transform: translateY(-2px);
+        }
+        
+        .btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .message {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 12px 20px;
+            border-radius: 8px;
+            text-align: center;
+            font-weight: 500;
+            z-index: 1000;
+            min-width: 300px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            transition: all 0.3s ease;
+        }
+        
+        .message.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        
+        .message.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        
+        .message.info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+        
+        .loading {
+            display: none;
+            position: absolute;
+            bottom: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(102, 126, 234, 0.95);
+            border: 2px solid #667eea;
+            border-radius: 15px;
+            padding: 15px 20px;
+            text-align: center;
+            z-index: 500;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+            min-width: 120px;
+            margin-bottom: 10px;
+        }
+        
+        .board-container {
+            flex: 1;
+            display: flex;
+            justify-content: center;
+            position: relative;
+        }
+        
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 10px auto;
+        }
+        
+        .loading-text {
+            color: white;
+            font-weight: 500;
+            font-size: 14px;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .game-over {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.8);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+        
+        .game-over-content {
+            background: white;
+            padding: 40px;
+            border-radius: 15px;
+            text-align: center;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.3);
+        }
+        
+        .game-over h2 {
+            color: #333;
+            margin-bottom: 20px;
+            font-size: 2em;
+        }
+        
+        .game-over p {
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 1.2em;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>围棋对弈</h1>
+            <p>与 AlphaGo Zero 风格的 AI 对弈</p>
+        </div>
+        
+        <div class="game-area">
+            <div class="board-container">
+                <div class="board" id="board">
+                    <!-- 棋盘格子将由JavaScript生成 -->
+                </div>
+            </div>
+            
+            <div class="info-panel">
+                <div class="game-status">
+                    <div class="status-item">
+                        <div class="status-label">当前玩家</div>
+                        <div class="status-value" id="current-player">黑棋</div>
+                    </div>
+                    <div class="status-item">
+                        <div class="status-label">游戏状态</div>
+                        <div class="status-value" id="game-status">进行中</div>
+                    </div>
+                </div>
+                
+                <div class="controls">
+                    <!-- AI思考覆层 -->
+                    <div class="loading" id="loading">
+                        <div class="spinner"></div>
+                        <div class="loading-text">AI 思考中...</div>
+                    </div>
+                    <button class="btn btn-primary" id="ai-move-btn" onclick="makeAIMove()">AI 落子</button>
+                    <button class="btn btn-secondary" onclick="resetGame()">重新开始</button>
+                    <button class="btn btn-secondary" onclick="judgeBoard()">判断胜负</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="game-over" id="game-over">
+        <div class="game-over-content">
+            <h2>游戏结束</h2>
+            <p id="winner-text"></p>
+            <button class="btn btn-primary" onclick="resetGame()">再来一局</button>
+        </div>
+    </div>
+    
+    <!-- 固定位置的消息显示 -->
+    <div id="message"></div>
+    
+    <script>
+        let gameState = {
+            board: Array(9).fill().map(() => Array(9).fill(0)),
+            currentPlayer: 0,
+            gameEnded: false,
+            winner: null,
+            winnerDetail: null,
+            blackArea: null,
+            whiteArea: null,
+            lastMove: null // 记录最新落子位置 {row, col}
+        };
+        
+        // 初始化棋盘
+        function initBoard() {
+            const board = document.getElementById('board');
+            board.innerHTML = '';
+            
+            for (let row = 0; row < 9; row++) {
+                for (let col = 0; col < 9; col++) {
+                    const cell = document.createElement('div');
+                    cell.className = 'cell';
+                    cell.dataset.row = row;
+                    cell.dataset.col = col;
+                    cell.onclick = () => makeMove(row, col);
+                    board.appendChild(cell);
+                }
+            }
+        }
+        
+        // 更新棋盘显示
+        function updateBoard() {
+            const cells = document.querySelectorAll('.cell');
+            cells.forEach(cell => {
+                const row = parseInt(cell.dataset.row);
+                const col = parseInt(cell.dataset.col);
+                const value = gameState.board[row][col];
+                
+                cell.innerHTML = '';
+                cell.className = 'cell';
+                
+                if (value === 1) {
+                    const stone = document.createElement('div');
+                    stone.className = 'stone black';
+                    // 检查是否是最新落子
+                    if (gameState.lastMove && gameState.lastMove.row === row && gameState.lastMove.col === col) {
+                        stone.classList.add('latest');
+                    }
+                    cell.appendChild(stone);
+                } else if (value === 2) {
+                    const stone = document.createElement('div');
+                    stone.className = 'stone white';
+                    // 检查是否是最新落子
+                    if (gameState.lastMove && gameState.lastMove.row === row && gameState.lastMove.col === col) {
+                        stone.classList.add('latest');
+                    }
+                    cell.appendChild(stone);
+                }
+                
+                if (gameState.gameEnded) {
+                    cell.classList.add('disabled');
+                }
+            });
+        }
+        
+        // 更新游戏信息
+        function updateGameInfo() {
+            document.getElementById('current-player').textContent = 
+                gameState.currentPlayer === 0 ? '黑棋' : '白棋';
+            
+            if (gameState.gameEnded) {
+                document.getElementById('game-status').textContent = '已结束';
+                document.getElementById('ai-move-btn').disabled = true;
+                
+                // 显示游戏结束对话框
+                const winnerText = gameState.winnerDetail || 
+                    (gameState.winner ? `${gameState.winner} 获胜！` : '游戏结束');
+                document.getElementById('winner-text').innerHTML = winnerText;
+                document.getElementById('game-over').style.display = 'flex';
+            } else {
+                document.getElementById('game-status').textContent = '进行中';
+                document.getElementById('ai-move-btn').disabled = false;
+                document.getElementById('game-over').style.display = 'none';
+            }
+        }
+        
+        // 显示消息
+        function showMessage(text, type = 'info') {
+            const messageDiv = document.getElementById('message');
+            messageDiv.innerHTML = `<div class="message ${type}">${text}</div>`;
+            setTimeout(() => {
+                messageDiv.innerHTML = '';
+            }, 3000);
+        }
+        
+        // 显示/隐藏加载状态
+        function setLoading(loading) {
+            document.getElementById('loading').style.display = loading ? 'block' : 'none';
+            document.getElementById('ai-move-btn').disabled = loading;
+        }
+        
+        // 人类玩家落子
+        async function makeMove(row, col) {
+            if (gameState.gameEnded || gameState.currentPlayer !== 0) {
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/move', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ row, col })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    gameState.board = data.board;
+                    gameState.currentPlayer = data.game_info.current_player;
+                    gameState.gameEnded = data.game_info.game_ended;
+                    gameState.winner = data.game_info.winner;
+                    gameState.winnerDetail = data.game_info.winner_detail;
+                    gameState.blackArea = data.game_info.black_area;
+                    gameState.whiteArea = data.game_info.white_area;
+                    gameState.lastMove = { row, col }; // 记录人类玩家的落子位置
+                    
+                    updateBoard();
+                    updateGameInfo();
+                    showMessage(data.message, 'success');
+                } else {
+                    showMessage(data.message, 'error');
+                }
+            } catch (error) {
+                showMessage('网络错误，请重试', 'error');
+                console.error('Error:', error);
+            }
+        }
+        
+        // AI落子
+        async function makeAIMove() {
+            if (gameState.gameEnded) {
+                return;
+            }
+            
+            setLoading(true);
+            
+            try {
+                const response = await fetch('/api/ai_move', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    gameState.board = data.board;
+                    gameState.currentPlayer = data.game_info.current_player;
+                    gameState.gameEnded = data.game_info.game_ended;
+                    gameState.winner = data.game_info.winner;
+                    gameState.winnerDetail = data.game_info.winner_detail;
+                    gameState.blackArea = data.game_info.black_area;
+                    gameState.whiteArea = data.game_info.white_area;
+                    
+                    // 记录AI的落子位置
+                    if (data.ai_move.row !== -1) {
+                        gameState.lastMove = { row: data.ai_move.row, col: data.ai_move.col };
+                    } else {
+                        gameState.lastMove = null; // AI弃权时清除高亮
+                    }
+                    
+                    updateBoard();
+                    updateGameInfo();
+                    
+                    if (data.ai_move.row === -1) {
+                        showMessage('AI 选择弃权', 'info');
+                    } else {
+                        showMessage(`AI 在 (${data.ai_move.row + 1}, ${data.ai_move.col + 1}) 落子`, 'info');
+                    }
+                } else {
+                    showMessage('AI 落子失败', 'error');
+                }
+            } catch (error) {
+                showMessage('网络错误，请重试', 'error');
+                console.error('Error:', error);
+            } finally {
+                setLoading(false);
+            }
+        }
+        
+        // 重置游戏
+        async function resetGame() {
+            try {
+                const response = await fetch('/api/reset', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    gameState.board = data.board;
+                    gameState.currentPlayer = data.game_info.current_player;
+                    gameState.gameEnded = data.game_info.game_ended;
+                    gameState.winner = data.game_info.winner;
+                    gameState.winnerDetail = data.game_info.winner_detail;
+                    gameState.blackArea = data.game_info.black_area;
+                    gameState.whiteArea = data.game_info.white_area;
+                    gameState.lastMove = null; // 重置时清除最新落子记录
+                    
+                    updateBoard();
+                    updateGameInfo();
+                    showMessage('游戏已重置', 'success');
+                    document.getElementById('game-over').style.display = 'none';
+                }
+            } catch (error) {
+                showMessage('重置失败，请重试', 'error');
+                console.error('Error:', error);
+            }
+        }
+        
+        // 获取当前棋盘状态
+        async function loadGameState() {
+            try {
+                const response = await fetch('/api/board');
+                const data = await response.json();
+                
+                gameState.board = data.board;
+                gameState.currentPlayer = data.game_info.current_player;
+                gameState.gameEnded = data.game_info.game_ended;
+                gameState.winner = data.game_info.winner;
+                gameState.winnerDetail = data.game_info.winner_detail;
+                gameState.blackArea = data.game_info.black_area;
+                gameState.whiteArea = data.game_info.white_area;
+                gameState.lastMove = null; // 加载状态时清除最新落子记录
+                
+                updateBoard();
+                updateGameInfo();
+            } catch (error) {
+                showMessage('加载游戏状态失败', 'error');
+                console.error('Error:', error);
+            }
+        }
+        
+        // 页面加载完成后初始化
+        document.addEventListener('DOMContentLoaded', function() {
+            initBoard();
+            loadGameState();
+        });
+
+        // 判断胜负
+        async function judgeBoard() {
+            try {
+                const response = await fetch('/judge', {method: 'POST'});
+                const data = await response.json();
+                let msg = `黑方得分: ${data.black} | 白方得分: ${data.white} | `;
+                if (data.winner === "black") msg += "黑方胜！";
+                else if (data.winner === "white") msg += "白方胜！";
+                else msg += "平局！";
+                
+                // 仅显示输赢结果，不显示游戏结束对话框
+                showMessage(msg, 'info');
+            } catch (error) {
+                showMessage('判断失败，请重试', 'error');
+            }
+        }
+    </script>
+</body>
+</html>
