@@ -81,17 +81,8 @@ class GoGameServer:
             
         # 使用MCTS获取最佳动作
         action_probs = self.mcts.run(self.state)
-        
         # 选择概率最高的合法动作
-        valid_moves = environment.valid_moves(self.state)
-        action_probs *= valid_moves  # 过滤非法动作
-        
-        if np.sum(action_probs) == 0:
-            # 没有合法动作，选择pass
-            action_idx = self.board_size * self.board_size
-        else:
-            action_idx = np.argmax(action_probs)
-            
+        action_idx = np.argmax(action_probs)
         if action_idx == self.board_size * self.board_size:
             # Pass动作
             self.state = environment.next_state(self.state, action_idx)

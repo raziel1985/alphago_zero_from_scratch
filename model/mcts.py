@@ -4,7 +4,6 @@ import torch
 import torch.nn as nn
 
 from dataclasses import dataclass
-from tqdm import tqdm
 from typing import Dict, List, Tuple, Optional, Set
 
 from gym_go import gogame as enviroment
@@ -123,6 +122,7 @@ class MCTS:
         policy, _ = self._evaluate_state(state)
         valid_moves = enviroment.valid_moves(state)
         policy = self._normalize_policy(policy, valid_moves)
+        # 每次进入run函数时的state(棋盘格局)不同，扩展的子节点会根据当前棋局的状态，探索剩余的有效空间
         root.expand(state, policy)
 
         # 执行MCTS模拟
@@ -178,12 +178,6 @@ class MCTS:
                     print(f"模拟{_+1}: 深度{len(search_path)}, 根节点, 价值{value:.3f}")
 
             for node in reversed(search_path):
-                # TODO(rogerluo)：BUG or feature?
-                # 每次更新value_sum会导致下一次模拟时，select_child会选择另一个节点进行探索，导致模拟是以接近BFS的方式在棋盘上进行。
-                # 在9*9的棋盘上，800次模拟只能探索到2层左右的深度（800 < 81^2)，根本无法探索到几十～上百步后的胜负手。
-                # 模拟过程无法通过真实的胜负手value进行回溯更新，只会在浅层节点上随机更新。后续对动作概率的改动，是随机扰动式的改动。
-                # 通过这样费时费力的方式确定下一手，每一手复杂度是O(num_simulations），生成的训练样本对于训练有何额外帮助。
-                # 和直接通过模型输出的policy一次性sample出一条到达胜负手的完整样本，每一手复杂度为O(1)，有何区别？
                 node.value_sum += value
                 node.visit_count += 1
                 value = -value
@@ -191,7 +185,11 @@ class MCTS:
         # 计算最终动作概率
         action_probs = np.zeros(self.board_size * self.board_size + 1)
         for action, child in root.children.items():
-            action_idx = self._action_to_index(action)
-            action_probs[action_idx] = child.visit_count
-        
-        return self._normalize_policy(action_probs, np.ones_like(action_probs))
+            if action == (-1, -1):
+                action_probs[-1] = child.visit_count    # pass动作的访问次数
+            else:
+                action_idx = self._action_to_index(action)
+                action_probs[action_idx] = child.visit_count      
+        # 归一化动作概率，过滤无效动作
+        valid_moves = enviroment.valid_moves(state)  
+        return self._normalize_policy(action_probs, valid_moves)

@@ -96,13 +96,6 @@ class SelfPlayGame:
                 'valid': f"{np.sum(valid_moves)}",
                 'passes': self.game.consecutive_passes
             })
-            # 确保策略仅包含合法动作
-            policy = policy * valid_moves
-            if np.sum(policy) > 0:
-                policy /= np.sum(policy)
-            else:
-                policy = np.zeros_like(policy)
-                policy[-1] = 1.0
             # 记录当前状态
             game_history.append({
                 'state': state.copy(),
@@ -126,7 +119,7 @@ class SelfPlayGame:
                 move_count += 1
                 move_pbar.update(1)
                 # 输出棋盘状态调试打印，正式训练可以注释掉
-                print(f"\nGame state:\n{environment.str(state)}")
+                #print(f"\nGame state:\n{environment.str(state)}")
             except AssertionError as e:
                 print(f"Warning: Invalid move attempted {action}, choosing random valid move")
                 valid_actions = np.where(valid_moves == 1)[0]
@@ -192,7 +185,7 @@ class AlphaGoZeroTrainer:
         board_size: int = 9, 
         num_channels: int = 128, 
         num_res_blocks: int = 10, 
-        num_simulations: int = 800,
+        num_simulations: int = 200,
         replay_buffer_size: int = 500000,
         batch_size: int = 128,
         num_epochs: int = 100,
@@ -297,8 +290,7 @@ class AlphaGoZeroTrainer:
                 model=self.eval_model,
                 board_size=self.board_size,
                 num_simulations=self.mcts.num_simulations,
-                device=self.device
-            )
+                device=self.device)
             state = game.reset()
             while not game.is_game_over():
                 # 选择当前玩家
@@ -310,7 +302,7 @@ class AlphaGoZeroTrainer:
                 # 执行动作
                 state = game.step(action)
                 # 输出棋盘状态调试打印，正式训练可以注释掉
-                print(f"Game state:\n{environment.str(state)}")
+                #print(f"Game state:\n{environment.str(state)}")
             game_outcome = game.get_winner()
             if game_outcome == 1:   # 当前（黑子）胜利
                 wins += 1
@@ -348,7 +340,7 @@ class AlphaGoZeroTrainer:
         # 同时保存为latest_model.pt，供app.py加载使用
         latest_path = os.path.join(self.checkpoint_dir, 'latest_model.pt')
         torch.save(checkpoint, latest_path)
-        print(f"Saved checkpoint: {path}")
+        print(f"\nSaved checkpoint: {path}")
         print(f"Saved latest model: {latest_path}")
 
         history_path = os.path.join(self.checkpoint_dir, 'training_history.json')
@@ -375,16 +367,22 @@ class AlphaGoZeroTrainer:
 
         total_start_time = time.time()
         try:
-            for epoch in range(self.num_epochs):
+            epoch_pbar = tqdm(range(self.num_epochs), desc="Training epochs", position=2, leave=True)  
+            for epoch in epoch_pbar:
                 epoch_start_time = time.time()
                 print(f"\nEpoch {epoch + 1}/{self.num_epochs}")
                 # 1. 自我对弈
                 print("\nSelf-play phase:")
                 total_moves = 0
-                for game_idx in range(self.games_per_epoch):
+                game_pbar = tqdm(range(self.games_per_epoch), desc="Self-play games", leave=False, position=1)
+                for game_idx in game_pbar:
                     moves = self.generate_self_play_data()
                     total_moves += moves
-                    print(f"\nGame {game_idx + 1}/{self.games_per_epoch}: move {moves}, avg_moves {total_moves / (game_idx + 1):.1f}")
+                    game_pbar.set_postfix({
+                        'moves': moves,
+                        'avg_moves': f"{total_moves/(game_idx+1):.1f}"
+                    })
+                game_pbar.close()
                 # 2. 训练
                 print("\nTraining phase:")
                 total_loss, total_policy_loss, total_value_loss = self.train_epoch()
