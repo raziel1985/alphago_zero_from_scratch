@@ -66,25 +66,127 @@ python3 -m web_app.app
 ## API 接口
 
 ### GET /
-返回游戏主页面
+**描述**: 返回游戏主页面  
+**返回**: HTML 页面
 
 ### POST /api/reset
-重置游戏到初始状态
+**描述**: 重置游戏到初始状态  
+**请求参数**: 无  
+**返回示例**:
+```json
+{
+  "success": true,
+  "board": [[0, 0, 0, ...], ...],
+  "game_info": {
+    "current_player": 0,
+    "current_player_name": "黑棋",
+    "game_ended": false,
+    "winner": null,
+    "winner_detail": null,
+    "black_area": null,
+    "white_area": null
+  }
+}
+```
 
 ### POST /api/move
-人类玩家落子
+**描述**: 人类玩家落子  
+**请求参数**:
 ```json
 {
   "row": 0,
   "col": 0
 }
 ```
+**返回示例**:
+```json
+{
+  "success": true,
+  "message": "落子成功",
+  "board": [[1, 0, 0, ...], ...],
+  "game_info": {
+    "current_player": 1,
+    "current_player_name": "白棋",
+    "game_ended": false,
+    "winner": null,
+    "winner_detail": null,
+    "black_area": null,
+    "white_area": null
+  }
+}
+```
+**错误返回**:
+```json
+{
+  "success": false,
+  "message": "非法落子"
+}
+```
 
 ### POST /api/ai_move
-AI 落子
+**描述**: AI 落子  
+**请求参数**: 无  
+**返回示例**:
+```json
+{
+  "success": true,
+  "message": "AI落子成功",
+  "ai_move": {"row": 3, "col": 3},
+  "board": [[1, 0, 0, ...], ...],
+  "game_info": {
+    "current_player": 0,
+    "current_player_name": "黑棋",
+    "game_ended": false,
+    "winner": null,
+    "winner_detail": null,
+    "black_area": null,
+    "white_area": null
+  }
+}
+```
+**AI 弃权时**:
+```json
+{
+  "success": true,
+  "message": "AI选择弃权",
+  "ai_move": {"row": -1, "col": -1},
+  "board": [[1, 0, 0, ...], ...],
+  "game_info": {...}
+}
+```
 
 ### GET /api/board
-获取当前棋盘状态
+**描述**: 获取当前棋盘状态  
+**请求参数**: 无  
+**返回示例**:
+```json
+{
+  "board": [[0, 1, 2, ...], ...],
+  "game_info": {
+    "current_player": 0,
+    "current_player_name": "黑棋",
+    "game_ended": false,
+    "winner": null,
+    "winner_detail": null,
+    "black_area": null,
+    "white_area": null
+  }
+}
+```
+
+### POST /judge
+**描述**: 判断当前棋盘胜负，返回黑白得分和胜者  
+**请求参数**: 无  
+**返回示例**:
+```json
+{
+  "black": 45.0,
+  "white": 39.5,
+  "winner": "black"
+}
+```
+
+
 
 ## 文件结构
 

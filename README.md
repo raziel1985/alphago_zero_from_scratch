@@ -65,7 +65,7 @@ python3 -m model.train
 
 ```bash
 # 从项目根目录运行
-PYTHONPATH=. python3 web_app/app.py
+python3 -m web_app.app
 ```
 
 然后在浏览器中访问 `http://localhost:8080` 开始与 AI 对弈。
@@ -187,7 +187,7 @@ PYTHONPATH=. python3 web_app/app.py
 
 ## 📄 许可证
 
-本项目采用 MIT 许可证 - 查看 [LICENSE](LICENSE) 文件了解详情。
+本项目采用 MIT 许可证
 
 ## 🙏 致谢
 
