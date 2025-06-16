@@ -22,64 +22,84 @@ surround_struct = np.array([[0, 1, 0],
 neighbor_deltas = np.array([[-1, 0], [1, 0], [0, -1], [0, 1]])  # 四个方向的偏移量
 
 
-def compute_invalid_moves(state: np.ndarray, player: int, ko_protect: tuple = None) -> np.ndarray:  # 计算无效落子位置
+def compute_invalid_moves(state: np.ndarray, player: int, ko_protect: tuple = None) -> np.ndarray:
     """
-    计算无效落子位置。
-    参数：
-        state (np.ndarray): 当前棋盘状态，形状为 (通道数, 棋盘行, 棋盘列)
-        player (int): 当前玩家(0-黑棋, 1-白棋）
-        ko_protect (tuple, 可选): 劫点坐标, 若无则为None
-    返回：
-        np.ndarray: 与棋盘同形状的布尔数组, True表示该位置无效
-    从对手的视角更新无效落子
+    从当前玩家的视角，计算对手不能落子的位置。
+    
     1.) 对手不能在以下位置落子：
-        i.) 如果该位置已有棋子
-        i.) 如果该位置受劫保护
+        i.) 如果该位置已被占用
+        ii.) 如果该位置受劫保护
     2.) 对手可以在以下位置落子：
-        i.) 如果该位置可以提子
+        i.) 如果该位置可以吃子
     3.) 对手不能在以下位置落子：
         i.) 如果该位置与对手只有一个气的群组相邻，且不与具有多个气的其他群组相邻，并且被完全包围
         ii.) 如果该位置被我方棋子包围，且所有相关的群组都有超过一个气
+    
+    当前函数使用启发式方法，而不是真正模拟落子来判断有效性，这会导致某些合法的落子被禁止。
+    更好的方法是: 1)模拟在目标位置落子 2) 检查是否能吃掉对方棋子,如果能吃子,移除被吃的棋子 3)计算落子后己方棋子群的气, 如果己方棋子群无气则为自杀手
+
+    参数：
+        state (np.ndarray): 棋盘状态，形状为 (通道数, 棋盘行, 棋盘列)
+        player (int): 当前玩家 (0=黑棋, 1=白棋)
+        ko_protect (tuple, optional): 劫点保护坐标 (行, 列)
+    
+    返回：
+        np.ndarray: 布尔数组,True表示对手的无效落子位置
     """
-    # 获取所有棋子和空位
-    all_pieces = np.sum(state[[govars.BLACK, govars.WHITE]], axis=0)  # 统计棋盘上所有棋子
-    empties = 1 - all_pieces  # 计算空位
-    # 初始化无效和有效数组
-    possible_invalid_array = np.zeros(state.shape[1:])  # 可能无效的位置
-    definite_valids_array = np.zeros(state.shape[1:])  # 确定有效的位置
-    # 获取所有群组
-    all_own_groups, num_own_groups = measurements.label(state[player])  # 己方群组
-    all_opp_groups, num_opp_groups = measurements.label(state[1 - player])  # 对方群组
-    expanded_own_groups = np.zeros((num_own_groups, *state.shape[1:]))  # 扩展己方群组到独立通道
-    expanded_opp_groups = np.zeros((num_opp_groups, *state.shape[1:]))  # 扩展对方群组到独立通道
-    # 将每个群组扩展为单独的通道
+    # 计算所有已占位置（黑棋+白棋）
+    all_pieces = np.sum(state[[govars.BLACK, govars.WHITE]], axis=0)
+    empties = 1 - all_pieces  # 计算空位（1表示空位，0表示有棋子）
+
+    # 初始化可能无效和确定有效的位置数组
+    possible_invalid_array = np.zeros(state.shape[1:])  # 标记可能无效的位置
+    definite_valids_array = np.zeros(state.shape[1:])   # 标记确定有效的位置
+
+    # 使用连通分量标记找出所有己方和对方的棋子群
+    all_own_groups, num_own_groups = measurements.label(state[player])        # 当前玩家的棋子群
+    all_opp_groups, num_opp_groups = measurements.label(state[1 - player])    # 对手的棋子群
+    
+    # 将每个棋子群扩展为独立的二维数组，便于分别计算每个群的气
+    expanded_own_groups = np.zeros((num_own_groups, *state.shape[1:]))
+    expanded_opp_groups = np.zeros((num_opp_groups, *state.shape[1:]))
+
+    # 为每个棋子群创建独立的掩码
     for i in range(num_own_groups):
-        expanded_own_groups[i] = all_own_groups == (i + 1)  # 标记每个己方群组
+        expanded_own_groups[i] = all_own_groups == (i + 1)  # label从1开始编号
+
     for i in range(num_opp_groups):
-        expanded_opp_groups[i] = all_opp_groups == (i + 1)  # 标记每个对方群组
-    # 计算每个群组的"气": 气是与当前群组相邻的空位
-    all_own_liberties = empties[np.newaxis] * ndimage.binary_dilation(expanded_own_groups, surround_struct[np.newaxis])  # 己方群组的气
-    all_opp_liberties = empties[np.newaxis] * ndimage.binary_dilation(expanded_opp_groups, surround_struct[np.newaxis])  # 对方群组的气
-    own_liberty_counts = np.sum(all_own_liberties, axis=(1, 2))  # 己方每个群组的气数
-    opp_liberty_counts = np.sum(all_opp_liberties, axis=(1, 2))  # 对方每个群组的气数
-    # 可能无效的位置包括：
-    # 1. 己方群组有多个气的位置
-    # 2. 对方群组只有一个气的位置
+        expanded_opp_groups[i] = all_opp_groups == (i + 1)
+
+    # 计算每个棋子群的气（自由度）
+    # binary_dilation找出每个群周围的相邻位置，与空位相乘得到实际的气
+    all_own_liberties = empties[np.newaxis] * ndimage.binary_dilation(expanded_own_groups, surround_struct[np.newaxis])
+    all_opp_liberties = empties[np.newaxis] * ndimage.binary_dilation(expanded_opp_groups, surround_struct[np.newaxis])
+
+    # 统计每个棋子群的气数
+    own_liberty_counts = np.sum(all_own_liberties, axis=(1, 2))  # 当前玩家各群的气数
+    opp_liberty_counts = np.sum(all_opp_liberties, axis=(1, 2))  # 对手各群的气数
+
+    # 可能无效位置：当前玩家多气群的气位 + 对手单气群的气位。对手在这些位置落子可能导致自杀
     possible_invalid_array += np.sum(all_own_liberties[own_liberty_counts > 1], axis=0)
     possible_invalid_array += np.sum(all_opp_liberties[opp_liberty_counts == 1], axis=0)
-    # 确定有效的位置包括：
-    # 1. 己方群组只有一个气的位置
-    # 2. 对方群组有多个气的位置
+    
+    # 确定有效位置：当前玩家单气群的气位 + 对手多气群的气位。对手在这些位置落子可以救己方棋子或安全落子
     definite_valids_array += np.sum(all_own_liberties[own_liberty_counts == 1], axis=0)
     definite_valids_array += np.sum(all_opp_liberties[opp_liberty_counts > 1], axis=0)
-    # 判断是否被完全包围
-    surrounded = ndimage.convolve(all_pieces, surround_struct, mode='constant', cval=1) == 4  # 上下左右都有子
-    # 所有无效的位置： 已经被占用的空间 + 上下左右都有子的情况下（可能无效的位置 - 确定有效的位置）
+
+    # 检查完全被包围的位置（四周都有棋子）
+    # 在边界用1填充，这样边缘位置也能正确计算
+    surrounded = ndimage.convolve(all_pieces, surround_struct, mode='constant', cval=1) == 4
+    
+    # 最终的对手无效位置判断公式：
+    # 对手无效位置 = 已占位置 + (可能无效 且 没有确定有效的理由 且 被完全包围)
+    # 这个启发式算法试图避免对手的自杀手
     invalid_moves = all_pieces + possible_invalid_array * (definite_valids_array == 0) * surrounded
-    # 如果劫保护不为空，则将劫保护的位置设置为无效位置
+
+    # 添加劫点保护
     if ko_protect is not None:
-        invalid_moves[ko_protect[0], ko_protect[1]] = 1  # 劫保护点设为无效
-    return invalid_moves > 0  # 返回布尔数组，True为无效落子
+        invalid_moves[ko_protect[0], ko_protect[1]] = 1
+    
+    return invalid_moves > 0  # 返回布尔数组，True表示对手的无效落子位置
 
 
 def batch_compute_invalid_moves(batch_state: np.ndarray, batch_player: np.ndarray, batch_ko_protect: list) -> np.ndarray:  # 批量计算无效落子
